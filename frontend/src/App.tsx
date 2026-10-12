@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { ApiError, approveRubric, extractPdf, getRubric, listRubrics } from './api';
-import type { ApprovedRubric, Criteria, Draft, Question, RubricSummary } from './types';
+import { ApiError, approveRubric, evaluateResume, extractPdf, getRubric, listRubrics } from './api';
+import type { ApprovedRubric, Criteria, Draft, Evaluation, ProviderOutcome, Question, RubricSummary } from './types';
 
 type Step = 'rubric' | 'resume' | 'compare';
 
@@ -23,9 +23,11 @@ export function App() {
   const [resumeText, setResumeText] = useState('');
   const [resumeName, setResumeName] = useState('');
   const [reviewed, setReviewed] = useState(false);
+  const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const uploadGeneration = useRef(0);
+  const evaluationGeneration = useRef(0);
 
   const refresh = () => listRubrics().then(setRubrics).catch(() => setMessage('Could not load rubrics.'));
   useEffect(() => { void refresh(); }, []);
@@ -35,6 +37,8 @@ export function App() {
     setResumeName('');
     setResumeText('');
     setReviewed(false);
+    evaluationGeneration.current += 1;
+    setEvaluation(null);
   };
 
   const updateQuestion = (index: number, next: Question) => setDraft((current) => ({
@@ -95,6 +99,23 @@ export function App() {
     }
   };
 
+  const evaluate = async () => {
+    if (!approved || !reviewed || !resumeText.trim()) return;
+    evaluationGeneration.current += 1;
+    const generation = evaluationGeneration.current;
+    setEvaluation(null);
+    setMessage('');
+    setBusy(true);
+    try {
+      const result = await evaluateResume({ id: approved.id, version: approved.version }, resumeText);
+      if (generation === evaluationGeneration.current) setEvaluation(result);
+    } catch (error) {
+      if (generation === evaluationGeneration.current) setMessage(error instanceof ApiError ? error.message : 'Could not run the comparison.');
+    } finally {
+      if (generation === evaluationGeneration.current) setBusy(false);
+    }
+  };
+
   return <main>
     <header className="hero"><p className="eyebrow">Recruiter pilot</p><h1>Make the rubric explicit before reviewing candidates.</h1><p>Every evaluation uses an approved, immutable rubric version.</p></header>
     <nav aria-label="Workflow" className="steps">
@@ -121,14 +142,26 @@ export function App() {
       <p className="muted">Upload one text-based PDF up to 10 MB. The file and extracted text stay in memory and are not saved by Rubric.</p>
       <label className="upload">Resume PDF<input type="file" accept="application/pdf,.pdf" disabled={busy} onChange={(event) => { void upload(event.currentTarget.files?.[0]); event.currentTarget.value = ''; }} /></label>
       {resumeName && <p className="file-name">{busy ? 'Extracting' : 'Loaded'}: {resumeName}</p>}
-      {resumeText && <label>Extracted text<textarea className="resume-text" rows={18} value={resumeText} onChange={(event) => { setResumeText(event.target.value); setReviewed(false); }} /></label>}
+      {resumeText && <label>Extracted text<textarea className="resume-text" rows={18} value={resumeText} onChange={(event) => { setResumeText(event.target.value); setReviewed(false); evaluationGeneration.current += 1; setEvaluation(null); }} /></label>}
       {resumeText && <label className="check"><input type="checkbox" checked={reviewed} onChange={(event) => setReviewed(event.target.checked)} /> I reviewed this text and it represents the resume.</label>}
       {message && <p className="notice" role="status">{message}</p>}
       <div className="actions"><button className="secondary" onClick={() => setStep('rubric')}>Back</button><button disabled={!reviewed || !resumeText.trim()} onClick={() => setStep('compare')}>Continue to comparison</button></div>
     </section>}
 
-    {step === 'compare' && approved && <section className="workspace single"><p className="eyebrow">{approved.role} / v{approved.version}</p><h2>Provider comparison</h2><p>The reviewed resume is ready. Provider evaluation is the next implementation slice.</p><div className="actions"><button className="secondary" onClick={() => setStep('resume')}>Back to text review</button></div></section>}
+    {step === 'compare' && approved && <section className="workspace single"><p className="eyebrow">{approved.role} / v{approved.version}</p><h2>Provider comparison</h2><p className="privacy-note">Running this comparison sends the reviewed text and rubric questions to Typesafe's Jev API and Boundless's Laya endpoint. Their account terms govern retention and processing.</p>{!evaluation && <div className="empty-results"><p>Both providers evaluate the same text and questions. A failure from one does not hide the other result.</p><button disabled={busy} onClick={evaluate}>{busy ? 'Evaluating...' : 'Run comparison'}</button></div>}{evaluation && <div className="results"><OutcomeCard name="Jev" outcome={evaluation.jev} rubric={approved} /><OutcomeCard name="Laya on Boundless" outcome={evaluation.laya} rubric={approved} /></div>}{message && <p className="notice" role="status">{message}</p>}<div className="actions"><button className="secondary" onClick={() => setStep('resume')}>Back to text review</button>{evaluation && <button onClick={evaluate} disabled={busy}>Run again</button>}</div></section>}
   </main>;
+}
+
+function OutcomeCard({ name, outcome, rubric }: { name: string; outcome: ProviderOutcome; rubric: ApprovedRubric }) {
+  return <article className="outcome"><div className="section-heading"><div><p className="eyebrow">{outcome.backend}</p><h3>{name}</h3></div><span className={`status ${outcome.status}`}>{outcome.status}</span></div><p className="provider-meta">{outcome.served_model || outcome.model} / {outcome.elapsed_ms} ms</p>{outcome.status === 'error' ? <p className="provider-error">{outcome.error?.message || 'The provider failed.'}</p> : rubric.questions.map((question) => { const answer = outcome.answers?.[question.id]; return <section className="answer" key={question.id}><p className="domain">{question.domain}</p><h4>{question.instructions}</h4><p className="decision">{formatAnswer(answer)}</p>{typeof answer?.confidence === 'number' && <p>Provider confidence: {(answer.confidence * 100).toFixed(1)}%</p>}{typeof answer?.probabilities === 'object' && answer.probabilities !== null && <dl>{Object.entries(answer.probabilities as Record<string, number>).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{(value * 100).toFixed(1)}%</dd></div>)}</dl>}</section>; })}</article>;
+}
+
+function formatAnswer(answer?: Record<string, unknown>): string {
+  if (!answer) return 'Missing answer';
+  if (answer.type === 'choice') return String(answer.choice);
+  if (answer.type === 'score' && typeof answer.score === 'number') return answer.score.toFixed(2);
+  if (answer.type === 'noul' && typeof answer.noul === 'number') return `${(answer.noul * 100).toFixed(1)}% yes`;
+  return 'Invalid answer';
 }
 
 function QuestionEditor({ index, question, update, remove }: { index: number; question: Question; update: (question: Question) => void; remove: () => void }) {

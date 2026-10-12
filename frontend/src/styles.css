@@ -59,6 +59,21 @@ button.danger, button.icon { background: transparent; border: 0; color: #8f3932;
 .check { align-items: center; display: flex; font-size: .9rem; gap: 9px; margin-top: 14px; }
 .check input { width: auto; }
 .file-name { color: #3f704d; font-size: .85rem; font-weight: 700; }
+.privacy-note { background: #fff4d8; border-left: 3px solid #bf8628; padding: 12px; }
+.empty-results { padding: 38px 10px; text-align: center; }
+.results { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; margin-top: 22px; }
+.outcome { border: 1px solid #d8d7ce; border-radius: 8px; padding: 16px; }
+.status { border-radius: 999px; font-size: .7rem; font-weight: 800; padding: 5px 8px; text-transform: uppercase; }
+.status.ok { background: #e1f0e4; color: #285c38; }
+.status.error { background: #f6dfdc; color: #8f3932; }
+.provider-meta, .provider-error { color: #68716b; font-size: .8rem; }
+.provider-error { color: #8f3932; }
+.answer { border-top: 1px solid #e4e2d9; padding: 14px 0; }
+.answer h4 { font-size: .9rem; margin: 4px 0 10px; }
+.domain { color: #3f704d; font-size: .7rem; font-weight: 800; margin: 0; text-transform: uppercase; }
+.decision { font-family: Georgia, serif; font-size: 1.6rem; margin: 8px 0; }
+.answer dl div { display: flex; font-size: .78rem; justify-content: space-between; }
+.answer dd { margin: 0; }
 
 @media (max-width: 800px) {
   main { padding: 28px 16px 60px; }
@@ -66,5 +81,6 @@ button.danger, button.icon { background: transparent; border: 0; color: #8f3932;
   .question-grid { grid-template-columns: 1fr; }
   .criterion { grid-template-columns: 1fr; }
   .steps { gap: 12px; justify-content: space-between; }
-  .steps span { font-size: .75rem; }
+  .step-link { font-size: .75rem; }
+  .results { grid-template-columns: 1fr; }
 }

@@ -1,12 +1,15 @@
 import os
 import asyncio
 from pathlib import Path
+from collections.abc import Mapping
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from dotenv import load_dotenv
 
-from .models import ApprovedRubric, RubricDraft, RubricSummary
+from .evaluation import Evaluator, SystemOneEvaluator
+from .models import ApprovedRubric, EvaluationRequest, RubricDraft, RubricSummary
 from .extraction import UploadError, extract_pdf, read_pdf_upload
 from .store import MissingRubricError, RubricStore, StaleRevisionError
 
@@ -15,8 +18,32 @@ def error(status: int, code: str, message: str) -> JSONResponse:
     return JSONResponse(status_code=status, content={"detail": {"code": code, "message": message}})
 
 
-def create_app(database: Path | None = None) -> FastAPI:
+load_dotenv()
+
+
+def configured_evaluators() -> dict[str, Evaluator]:
+    return {
+        "jev": SystemOneEvaluator(
+            "jev",
+            os.getenv("JEV_URL", "https://api.typesafe.ai/v1/systemone"),
+            os.getenv("JEV_API_KEY", ""),
+            os.getenv("JEV_MODEL", "jev-1.13.0"),
+        ),
+        "laya": SystemOneEvaluator(
+            "boundless",
+            os.getenv("LAYA_URL", ""),
+            os.getenv("LAYA_API_KEY", ""),
+            os.getenv("LAYA_MODEL", "convaiinnovations/laya"),
+            max_len=int(os.getenv("LAYA_MAX_LEN", "8192")),
+            tolerance=0.00011,
+        ),
+    }
+
+
+def create_app(database: Path | None = None, *, evaluators: Mapping[str, Evaluator] | None = None) -> FastAPI:
     store = RubricStore(database or Path(os.getenv("SQLITE_PATH", "data/rubric.sqlite3")))
+    providers = dict(evaluators) if evaluators is not None else configured_evaluators()
+    evaluation_lock = asyncio.Lock()
     app = FastAPI(title="Rubric")
 
     @app.middleware("http")
@@ -77,6 +104,21 @@ def create_app(database: Path | None = None) -> FastAPI:
             "invalid_pdf": "The PDF could not be read. Re-export it and try again.",
         }
         return error(422, code or "invalid_pdf", messages.get(code, messages["invalid_pdf"]))
+
+    @app.post("/api/evaluate")
+    async def evaluate_resume(request: EvaluationRequest):
+        try:
+            rubric = await asyncio.to_thread(store.get, request.rubric.id, request.rubric.version)
+        except MissingRubricError:
+            return error(404, "rubric_not_found", "The approved rubric version was not found.")
+        if evaluation_lock.locked():
+            return error(409, "evaluation_busy", "Another resume comparison is still running.")
+        async with evaluation_lock:
+            jev, laya = await asyncio.gather(
+                providers["jev"].evaluate(request.reviewed_text, rubric.questions),
+                providers["laya"].evaluate(request.reviewed_text, rubric.questions),
+            )
+        return {"rubric": request.rubric.model_dump(), "jev": jev, "laya": laya}
 
     return app
 

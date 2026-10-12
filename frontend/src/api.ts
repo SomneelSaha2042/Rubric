@@ -1,4 +1,4 @@
-import type { ApprovedRubric, Draft, RubricSummary } from './types';
+import type { ApprovedRubric, Draft, Evaluation, RubricRef, RubricSummary } from './types';
 
 export class ApiError extends Error {}
 
@@ -30,3 +30,9 @@ export const extractPdf = (file: File) => {
   body.append('file', file);
   return request<{ text: string }>('/api/extract', { method: 'POST', body });
 };
+
+export const evaluateResume = (rubric: RubricRef, reviewedText: string) => request<Evaluation>('/api/evaluate', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ rubric, reviewed_text: reviewedText }),
+});
