@@ -12,7 +12,7 @@ export type RubricRef = { id: string; version: number };
 
 export type Draft = {
   role: string;
-  creation_source: 'manual' | 'revision';
+  creation_source: 'manual' | 'assisted' | 'revision';
   questions: Question[];
   base_version?: RubricRef;
 };

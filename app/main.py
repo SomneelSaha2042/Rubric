@@ -9,7 +9,8 @@ from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 
 from .evaluation import Evaluator, SystemOneEvaluator
-from .models import ApprovedRubric, EvaluationRequest, RubricDraft, RubricSummary
+from .drafting import Drafter, DraftError, OpenAIJsonDrafter
+from .models import ApprovedRubric, DraftRequest, EvaluationRequest, RubricDraft, RubricSummary
 from .extraction import UploadError, extract_pdf, read_pdf_upload
 from .store import MissingRubricError, RubricStore, StaleRevisionError
 
@@ -40,9 +41,18 @@ def configured_evaluators() -> dict[str, Evaluator]:
     }
 
 
-def create_app(database: Path | None = None, *, evaluators: Mapping[str, Evaluator] | None = None) -> FastAPI:
+def configured_drafter() -> Drafter:
+    return OpenAIJsonDrafter(
+        os.getenv("DRAFTING_URL", ""),
+        os.getenv("DRAFTING_MODEL", ""),
+        os.getenv("DRAFTING_API_KEY", ""),
+    )
+
+
+def create_app(database: Path | None = None, *, evaluators: Mapping[str, Evaluator] | None = None, drafter: Drafter | None = None) -> FastAPI:
     store = RubricStore(database or Path(os.getenv("SQLITE_PATH", "data/rubric.sqlite3")))
     providers = dict(evaluators) if evaluators is not None else configured_evaluators()
+    rubric_drafter = drafter or configured_drafter()
     evaluation_lock = asyncio.Lock()
     app = FastAPI(title="Rubric")
 
@@ -70,6 +80,13 @@ def create_app(database: Path | None = None, *, evaluators: Mapping[str, Evaluat
             return error(404, "rubric_not_found", "The base rubric version was not found.")
         except StaleRevisionError:
             return error(409, "stale_revision", "A newer rubric version already exists.")
+
+    @app.post("/api/rubrics/draft", response_model=RubricDraft)
+    async def draft_rubric(request: DraftRequest):
+        try:
+            return await rubric_drafter.draft(request.role, request.job_description)
+        except DraftError as exc:
+            return error(exc.status, exc.code, exc.message)
 
     @app.get("/api/rubrics", response_model=list[RubricSummary])
     def list_rubrics():

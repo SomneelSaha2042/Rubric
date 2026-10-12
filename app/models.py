@@ -65,6 +65,11 @@ class RubricRef(Model):
     version: int = Field(ge=1)
 
 
+class DraftRequest(Model):
+    role: str = Field(min_length=1, max_length=200)
+    job_description: str = Field(min_length=1, max_length=100_000)
+
+
 class RubricDraft(Model):
     role: str = Field(min_length=1)
     creation_source: Literal["manual", "assisted", "revision"]

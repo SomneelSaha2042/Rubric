@@ -25,6 +25,12 @@ export const approveRubric = (draft: Draft) =>
     body: JSON.stringify(draft),
   });
 
+export const draftRubric = (role: string, jobDescription: string) => request<Draft>('/api/rubrics/draft', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ role, job_description: jobDescription }),
+});
+
 export const extractPdf = (file: File) => {
   const body = new FormData();
   body.append('file', file);

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ApiError, approveRubric, evaluateResume, extractPdf, getRubric, listRubrics } from './api';
+import { ApiError, approveRubric, draftRubric, evaluateResume, extractPdf, getRubric, listRubrics } from './api';
 import type { ApprovedRubric, Criteria, Draft, Evaluation, ProviderOutcome, Question, RubricSummary } from './types';
 
 type Step = 'rubric' | 'resume' | 'compare';
@@ -18,6 +18,8 @@ function newQuestion(type: Question['type']): Question {
 export function App() {
   const [step, setStep] = useState<Step>('rubric');
   const [draft, setDraft] = useState<Draft>(blankDraft);
+  const [creationMode, setCreationMode] = useState<'manual' | 'assisted'>('manual');
+  const [jobDescription, setJobDescription] = useState('');
   const [rubrics, setRubrics] = useState<RubricSummary[]>([]);
   const [approved, setApproved] = useState<ApprovedRubric | null>(null);
   const [resumeText, setResumeText] = useState('');
@@ -52,6 +54,7 @@ export function App() {
     try {
       const rubric = await getRubric(id, version);
       setApproved(rubric);
+      setCreationMode('manual');
       setDraft({ role: rubric.role, questions: rubric.questions, creation_source: 'revision', base_version: { id: rubric.id, version: rubric.version } });
       clearCandidate();
       setMessage(`Version ${version} selected. Edit it to create a revision, or continue with this version.`);
@@ -99,6 +102,23 @@ export function App() {
     }
   };
 
+  const generateDraft = async () => {
+    if (!draft.role.trim() || !jobDescription.trim()) return;
+    setBusy(true);
+    setMessage('');
+    try {
+      const result = await draftRubric(draft.role, jobDescription);
+      setDraft(result);
+      setApproved(null);
+      clearCandidate();
+      setMessage('Draft generated. Review every question before approval.');
+    } catch (error) {
+      setMessage(error instanceof ApiError ? error.message : 'Could not generate the rubric draft.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const evaluate = async () => {
     if (!approved || !reviewed || !resumeText.trim()) return;
     evaluationGeneration.current += 1;
@@ -124,12 +144,14 @@ export function App() {
 
     {step === 'rubric' && <div className="layout">
       <aside aria-label="Approved rubrics">
-        <div className="section-heading"><div><p className="eyebrow">Library</p><h2>Approved rubrics</h2></div><button className="secondary" onClick={() => { setDraft(blankDraft()); setApproved(null); clearCandidate(); setMessage(''); }}>New</button></div>
+        <div className="section-heading"><div><p className="eyebrow">Library</p><h2>Approved rubrics</h2></div><button className="secondary" onClick={() => { setDraft(blankDraft()); setCreationMode('manual'); setJobDescription(''); setApproved(null); clearCandidate(); setMessage(''); }}>New</button></div>
         {rubrics.length === 0 ? <p className="muted">No approved rubrics yet.</p> : rubrics.map((rubric) => <section className="rubric-summary" key={rubric.id}><h3>{rubric.role}</h3><div className="version-list">{rubric.versions.map((version) => <button className="version" disabled={busy} key={version.version} onClick={() => load(rubric.id, version.version)}>v{version.version} <small>{new Date(version.created_at).toLocaleDateString()}</small></button>)}</div></section>)}
       </aside>
       <section className="workspace" aria-labelledby="editor-title">
         <div className="section-heading"><div><p className="eyebrow">{draft.base_version ? `Revision of v${draft.base_version.version}` : 'Manual draft'}</p><h2 id="editor-title">Rubric editor</h2></div>{approved && <span className="badge">Selected: v{approved.version}</span>}</div>
+        {!draft.base_version && <div className="mode-tabs" aria-label="Rubric creation mode"><button className={creationMode === 'manual' ? 'active' : 'secondary'} onClick={() => { setCreationMode('manual'); setDraft({ ...blankDraft(), role: draft.role }); }}>Manual</button><button className={creationMode === 'assisted' ? 'active' : 'secondary'} onClick={() => { setCreationMode('assisted'); setDraft({ ...blankDraft(), role: draft.role, creation_source: 'assisted' }); }}>Assisted</button></div>}
         <label>Role<input value={draft.role} onChange={(event) => setDraft({ ...draft, role: event.target.value })} placeholder="e.g. Backend engineer" /></label>
+        {!draft.base_version && creationMode === 'assisted' && <div className="assisted"><label>Job description<textarea rows={8} value={jobDescription} onChange={(event) => setJobDescription(event.target.value)} placeholder="Paste the job description. It is sent only to your configured drafting endpoint and is not saved by Rubric." /></label><button disabled={busy || !draft.role.trim() || !jobDescription.trim()} onClick={generateDraft}>{busy ? 'Generating...' : 'Generate questions'}</button></div>}
         <div className="questions">{draft.questions.map((question, index) => <QuestionEditor index={index} key={question.id} question={question} update={(next) => updateQuestion(index, next)} remove={() => setDraft({ ...draft, questions: draft.questions.filter((_, position) => position !== index) })} />)}</div>
         <div className="add-row" aria-label="Add a question"><span>Add question</span>{(['choice', 'score', 'noul'] as const).map((type) => <button className="secondary" key={type} onClick={() => setDraft({ ...draft, questions: [...draft.questions, newQuestion(type)] })}>{type === 'noul' ? 'Yes / no' : type[0].toUpperCase() + type.slice(1)}</button>)}</div>
         {message && <p className="notice" role="status">{message}</p>}
