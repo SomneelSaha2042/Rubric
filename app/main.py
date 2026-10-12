@@ -1,4 +1,5 @@
 import os
+import asyncio
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -6,6 +7,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from .models import ApprovedRubric, RubricDraft, RubricSummary
+from .extraction import UploadError, extract_pdf, read_pdf_upload
 from .store import MissingRubricError, RubricStore, StaleRevisionError
 
 
@@ -52,6 +54,29 @@ def create_app(database: Path | None = None) -> FastAPI:
             return store.get(rubric_id, version)
         except MissingRubricError:
             return error(404, "rubric_not_found", "The rubric version was not found.")
+
+    @app.post("/api/extract")
+    async def extract_resume(request: Request):
+        try:
+            pdf = await read_pdf_upload(request)
+            result = await asyncio.to_thread(extract_pdf, pdf)
+        except UploadError as exc:
+            return error(exc.status, exc.code, exc.message)
+        finally:
+            pdf = b""
+
+        code = result.get("error")
+        if not code:
+            return {"text": result["text"]}
+        messages = {
+            "encrypted_pdf": "Remove the PDF password and upload it again.",
+            "too_many_pages": "The PDF must contain 100 pages or fewer.",
+            "too_much_text": "The extracted text is too large to review safely.",
+            "no_pdf_text": "No selectable text was found. Re-export the resume as a text PDF.",
+            "pdf_timeout": "The PDF took too long to read. Re-export it and try again.",
+            "invalid_pdf": "The PDF could not be read. Re-export it and try again.",
+        }
+        return error(422, code or "invalid_pdf", messages.get(code, messages["invalid_pdf"]))
 
     return app
 

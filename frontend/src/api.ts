@@ -24,3 +24,9 @@ export const approveRubric = (draft: Draft) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(draft),
   });
+
+export const extractPdf = (file: File) => {
+  const body = new FormData();
+  body.append('file', file);
+  return request<{ text: string }>('/api/extract', { method: 'POST', body });
+};
