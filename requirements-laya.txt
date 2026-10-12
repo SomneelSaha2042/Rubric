@@ -1,0 +1,4 @@
+# Optional in-process backend only; hosted Laya needs the core HTTPX dependency.
+# CPU execution is selected through LAYA_DEVICE in .env.
+laya==0.4.4
+torch==2.14.1
