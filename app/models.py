@@ -106,3 +106,10 @@ class RubricSummary(Model):
 class EvaluationRequest(Model):
     rubric: RubricRef
     reviewed_text: str = Field(min_length=1, max_length=1_000_000)
+
+    @field_validator("reviewed_text")
+    @classmethod
+    def validate_text_bytes(cls, value: str) -> str:
+        if len(value.encode("utf-8")) > 1_000_000:
+            raise ValueError("reviewed text must be at most 1 MB")
+        return value

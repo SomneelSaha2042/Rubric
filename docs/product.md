@@ -1,6 +1,6 @@
 # Rubric recruiter pilot
 
-Status: design contract for the next milestone. This repository currently contains dependencies, configuration, and documentation; no recruiter workflow is implemented.
+Status: implemented localhost pilot. Provider privacy qualification and live synthetic endpoint testing remain required before real resume use.
 
 ## Terms
 
@@ -36,7 +36,9 @@ The pilot displays reviewed source text alongside answers. The typed evaluators 
 
 Resume files, reviewed text, and results live only in active application memory and are cleared when replacing the resume, resetting, or ending the session. Do not write them to logs, browser storage, SQLite, exports, or application temporary files. Operating-system paging and provider-side retention are outside that application-level policy. Jev and the selected third-party Laya endpoint receive reviewed candidate text remotely; the drafting provider receives only the job description. A future self-hosted HTTP or local Laya adapter changes the Laya recipient without changing the rubric workflow. Hosted inference is the pilot default; local-only processing is not a claim this pilot can make. The pilot must make those destinations clear before use, and provider retention must be checked before real candidate data is used. Job descriptions and rubric criteria must not embed candidate data.
 
-## Acceptance criteria for the application milestone
+## Acceptance criteria and implementation status
+
+The application implements the workflow criteria below. Automated tests cover backend validation, persistence, extraction, provider isolation, and candidate-data exclusion from SQLite; the production frontend build type-checks the recruiter flow. Live-provider token limits, retention commitments, latency, billing, and resume quality remain qualification work.
 
 1. Manual and assisted creation converge on the same editable draft and explicit approval. Missing drafting settings give a clear error while manual editing remains available.
 2. Draft validation rejects empty roles, empty question sets, duplicate IDs, unknown types, missing instructions, and invalid criteria. Model output never bypasses validation or approval.

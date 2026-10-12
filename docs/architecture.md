@@ -1,6 +1,6 @@
-# Architecture and intended contracts
+# Architecture and contracts
 
-This document specifies future modules and interfaces. None of the endpoints or application modules below are implemented yet.
+The HTTP-hosted pilot described here is implemented. Optional in-process Laya, OCR, public deployment, and provider qualification remain deferred.
 
 ```mermaid
 flowchart TD
@@ -24,7 +24,7 @@ An evaluation resolves an approved version on the server, snapshots reviewed tex
 
 ## Canonical question and rubric format
 
-The intended discriminated union uses `type` and these fields:
+The discriminated union uses `type` and these fields:
 
 | Type | Required common fields | Type-specific fields |
 | --- | --- | --- |
@@ -53,7 +53,7 @@ All common strings must be nonempty after trimming. IDs are unique in a version 
 }
 ```
 
-Both modes use this schema. Persisted snapshots add `id`, positive integer `version`, and `created_at` (UTC ISO 8601). A base reference identifies `{id, version}`. Do not store the job description or a candidate state with the rubric. The next implementation must translate these documented constraints into Pydantic models and tests.
+Both modes use this schema. Persisted snapshots add `id`, positive integer `version`, and `created_at` (UTC ISO 8601). A base reference identifies `{id, version}`. Job descriptions and candidate state are not stored with the rubric. Pydantic models enforce these constraints at the API boundary.
 
 ## HTTP interfaces
 
@@ -78,7 +78,7 @@ JSON mode provides JSON syntax rather than schema enforcement, so local validati
 
 ## Evaluation adapter contract
 
-One intended `evaluate(state, questions)` interface returns either `{status: "ok", backend, model, answers, elapsed_ms}` or `{status: "error", backend, model, error: {code, message}, elapsed_ms}`. Timing uses a monotonic clock and includes budget checks and hosted round-trip time (or loading/inference for a later local adapter). `backend` identifies the configured host or local adapter; preserve served checkpoint/revision when available so comparisons are attributable after switching providers. Preserve validated provider answer fields and available usage/routing metadata in memory. Token usage supports estimating costs; billing units must be verified per host rather than assumed to count the shared resume only once. Never normalize confidence into a shared correctness score or persist candidate outcomes.
+The `evaluate(state, questions)` interface returns either `{status: "ok", backend, model, answers, elapsed_ms}` or `{status: "error", backend, model, error: {code, message}, elapsed_ms}`. Timing uses a monotonic clock and includes the hosted round trip. `backend` identifies the configured host; the adapter preserves served model and usage metadata when returned. Validated provider answer fields remain in memory. Billing units must be verified per host rather than assumed to count the shared resume only once. Confidence is not normalized into a shared correctness score and candidate outcomes are not persisted.
 
 Jev uses asynchronous HTTPX against `https://api.typesafe.ai/v1/systemone` with `JEV_API_KEY` and pinned `model=jev-1.13.0`. Map question IDs to typed questions. Preserve Choice's `choice`, `probabilities`, `confidence`; Score's `score`, `legend`, `probabilities`, `confidence`; and Noul's `noul`. Score can be fractional. These answer fields and the hosted endpoint are documented in the [Jev API reference](https://docs.typesafe.ai/api).
 
@@ -114,10 +114,12 @@ Clear frontend component state on reset/replacement and suppress stale async res
 
 ## Local configuration and serving
 
-Run from the repository root so `SQLITE_PATH` and optional `HF_HOME` resolve consistently. Load root `.env` on the server before initializing provider clients; no secrets in `VITE_*` variables. Validate configuration at use: manual rubrics and extraction work without drafting credentials; provider failures appear independently. Default `LAYA_BACKEND=http`; require URL/key/model at use and ignore local checkpoint/device/cache settings. A later `local` choice validates those local settings. Changing endpoints is an operator configuration change, not a recruiter workflow. `.env.example` records all intended settings, but no application reads them yet.
+Run from the repository root so `SQLITE_PATH` and optional `HF_HOME` resolve consistently. The server loads root `.env` before composing provider clients; no secrets belong in `VITE_*` variables. Configuration is validated at use: manual rubrics and extraction work without drafting credentials, and provider failures appear independently. Default `LAYA_BACKEND=http`; the HTTP adapter requires URL/key/model and ignores local checkpoint/device/cache settings. A later `local` choice must validate those local settings. Changing endpoints is an operator configuration change, not a recruiter workflow. `/api/status` reports configured readiness without exposing credentials.
 
-Vite is configured at `127.0.0.1:5173` and proxies `/api` unchanged to FastAPI at `127.0.0.1:8000`. The future backend command must use `--host 127.0.0.1 --workers 1`. Same-origin proxying avoids a separate CORS setup. In a later packaged local run, FastAPI serves `frontend/dist`, keeping `/api` routing ahead of the SPA fallback. Local binding is the pilot boundary; public hosting/authentication is deferred.
+Vite is configured at `127.0.0.1:5173` and proxies `/api` unchanged to FastAPI at `127.0.0.1:8000`. Run Uvicorn with `--host 127.0.0.1 --workers 1`. Same-origin proxying avoids a separate CORS setup. After `npm run build`, FastAPI serves `frontend/dist`, with `/api` routes registered first. Local binding is the pilot boundary; public hosting/authentication is deferred.
 
-## Required future verification
+## Verification and remaining qualification
 
-Test manual/assisted schema parity, incomplete/refused JSON and missing configuration, approval-only evaluation, revision transactions and immutability, exact version selection, corrupt/encrypted/oversized/scanned PDFs, editable extraction, stale responses, independent timeouts/endpoint failures, provider answer validation, exact token boundaries and overhead, HTTP backend interchangeability without UI/schema changes, no redirect credential forwarding or cross-host fallback, served model identity, verified billing usage, later CPU-thread concurrency, and candidate-data absence in database/logs/browser persistence/temp files. Use synthetic resumes for tests. Measure hosted latency, billed usage, and question-type quality/calibration before accepting the recruiter pilot; measure local memory/cold-warm CPU latency only when adding that adapter. No application build or workflow tests can run until the application exists.
+Automated tests cover manual and assisted validation, invalid JSON-shaped drafts, missing drafting configuration, approval-only evaluation, revision immutability and stale bases, exact version lookup, corrupt/oversized/empty PDFs, independent provider failure, provider answer IDs/types/labels/ranges/distributions, and synthetic candidate/job-data absence from SQLite. The UI suppresses stale extraction/evaluation responses and clears results when reviewed inputs change. HTTPX redirects are disabled and the adapter never falls back to another host.
+
+Before real resumes, use synthetic inputs to test encrypted/scanned/page-limit PDFs, hosted timeouts and rate limits, exact provider token boundaries and question overhead, served checkpoint identity, returned usage and billing, and all three question types. Review database, logs, browser persistence, temp files, and OS/process behavior during an instrumented run. Measure latency and resume quality/calibration. If the local adapter is added, separately test its tokenizer budgets, thread lock, cold/warm latency, and memory.

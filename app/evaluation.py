@@ -17,15 +17,16 @@ def _probability(value: object) -> float:
     return float(value)
 
 
-def _distribution(value: object, labels: set[str], tolerance: float) -> None:
+def _distribution(value: object, labels: set[str], tolerance: float | None) -> None:
     if not isinstance(value, dict) or set(value) != labels:
         raise ValueError("invalid distribution labels")
     total = sum(_probability(item) for item in value.values())
-    if abs(total - 1) > tolerance:
+    allowed_error = tolerance if tolerance is not None else len(labels) * 0.00005 + 1e-8
+    if abs(total - 1) > allowed_error:
         raise ValueError("invalid distribution total")
 
 
-def validate_answers(data: object, questions: list[Question], tolerance: float) -> dict:
+def validate_answers(data: object, questions: list[Question], tolerance: float | None) -> dict:
     if not isinstance(data, dict) or set(data) != {question.id for question in questions}:
         raise ValueError("answer IDs do not match")
     for question in questions:
@@ -66,7 +67,7 @@ class SystemOneEvaluator:
         model: str,
         *,
         max_len: int | None = None,
-        tolerance: float = 1e-5,
+        tolerance: float | None = 1e-5,
         client: httpx.AsyncClient | None = None,
     ) -> None:
         self.backend = backend

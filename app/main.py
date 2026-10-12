@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 
 from .evaluation import Evaluator, SystemOneEvaluator
@@ -36,7 +37,7 @@ def configured_evaluators() -> dict[str, Evaluator]:
             os.getenv("LAYA_API_KEY", ""),
             os.getenv("LAYA_MODEL", "convaiinnovations/laya"),
             max_len=int(os.getenv("LAYA_MAX_LEN", "8192")),
-            tolerance=0.00011,
+            tolerance=None,
         ),
     }
 
@@ -65,12 +66,10 @@ def create_app(database: Path | None = None, *, evaluators: Mapping[str, Evaluat
     @app.exception_handler(RequestValidationError)
     async def validation_error(_request: Request, exc: RequestValidationError):
         fields = [".".join(str(part) for part in item["loc"] if part != "body") for item in exc.errors()]
-        response = error(422, "invalid_request", "The request is invalid.")
-        response.body = JSONResponse(
+        return JSONResponse(
             status_code=422,
             content={"detail": {"code": "invalid_request", "message": "The request is invalid.", "fields": fields}},
-        ).body
-        return response
+        )
 
     @app.post("/api/rubrics", response_model=ApprovedRubric, status_code=201)
     def approve_rubric(draft: RubricDraft):
@@ -91,6 +90,27 @@ def create_app(database: Path | None = None, *, evaluators: Mapping[str, Evaluat
     @app.get("/api/rubrics", response_model=list[RubricSummary])
     def list_rubrics():
         return store.list()
+
+    @app.get("/api/status")
+    def status():
+        return {
+            "status": "ready",
+            "drafting": {
+                "configured": all(os.getenv(name, "") for name in ("DRAFTING_URL", "DRAFTING_MODEL", "DRAFTING_API_KEY")),
+            },
+            "providers": {
+                "jev": {
+                    "backend": "typesafe",
+                    "model": os.getenv("JEV_MODEL", "jev-1.13.0"),
+                    "configured": bool(os.getenv("JEV_API_KEY", "")),
+                },
+                "laya": {
+                    "backend": os.getenv("LAYA_BACKEND", "http"),
+                    "model": os.getenv("LAYA_MODEL", "convaiinnovations/laya"),
+                    "configured": all(os.getenv(name, "") for name in ("LAYA_URL", "LAYA_API_KEY", "LAYA_MODEL")),
+                },
+            },
+        }
 
     @app.get("/api/rubrics/{rubric_id}/versions/{version}", response_model=ApprovedRubric)
     def get_rubric(rubric_id: str, version: int):
@@ -137,6 +157,9 @@ def create_app(database: Path | None = None, *, evaluators: Mapping[str, Evaluat
             )
         return {"rubric": request.rubric.model_dump(), "jev": jev, "laya": laya}
 
+    frontend = Path(__file__).resolve().parents[1] / "frontend" / "dist"
+    if frontend.joinpath("index.html").is_file():
+        app.mount("/", StaticFiles(directory=frontend, html=True), name="frontend")
     return app
 
 

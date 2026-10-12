@@ -3,11 +3,11 @@
 Date: 2026-10-12
 Status: Accepted stack; local Laya default superseded by [ADR 0002](0002-swappable-hosted-laya.md).
 
-The decision below records the original setup. Current pilot direction uses a swappable hosted Laya backend; installed local dependencies remain optional. Runtime quality and performance await measurement.
+The decision below records the original setup. The implemented pilot uses a swappable hosted Laya backend; installed local dependencies remain optional. Runtime quality and performance await live measurement.
 
 ## Context
 
-Rubric needs editable manual and assisted question creation, explicit immutable approval, reviewed PDF extraction, and a comparison of hosted Jev with local Laya. The first pilot has one recruiter, one resume at a time, and an Intel-graphics machine with 32 GB RAM. This milestone deliberately stops before application implementation and model downloads.
+Rubric needs editable manual and assisted question creation, explicit immutable approval, reviewed PDF extraction, and a comparison of hosted Jev with Laya. The first pilot has one recruiter and one resume at a time. The application is implemented without model downloads; optional local inference on the Intel-graphics, 32 GB machine remains deferred.
 
 ## Decision
 
@@ -37,4 +37,4 @@ Defer an ORM, external database, queue, Redis, microservices, extra UI libraries
 
 ## Verification
 
-Dependency installation, dependency-tree consistency, imports without weights, tool versions, configuration, links, and Git exclusions are checked in this milestone. See [README](../../README.md) for reproducible commands and recorded outcomes and [architecture](../architecture.md) for future behavioral tests.
+Dependency installation, dependency-tree consistency, imports without weights, tool versions, configuration, links, Git exclusions, backend behavior tests, and a production frontend build are checked. See [README](../../README.md) for reproducible commands and [architecture](../architecture.md) for implemented tests and remaining live-provider qualification.
